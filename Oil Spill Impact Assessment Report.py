@@ -55,6 +55,9 @@ from cartopy.io.img_tiles import OSM
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 import subprocess
 import imageio.v2 as imageio
+from typing import List
+
+
 
 print(cartopy.__version__)
 
@@ -433,7 +436,6 @@ class Report:
     def create_gif(self, image_files: List[str], output_gif: str) -> None:
         """將多張圖片合成為GIF動畫"""
         try:
-            import imageio
             print(f"\n開始生成GIF動畫: {output_gif}")
             
             # 讀取所有圖片
@@ -909,7 +911,7 @@ class Report:
             # 保存圖片
             plt.savefig(output_file, 
                         bbox_inches='tight', 
-                        dpi=self.animation_dpi if is_animation_frame else 1200,
+                        dpi=self.animation_dpi if is_animation_frame else 800,
                         pad_inches=0.1)
             plt.close()
             
@@ -1334,6 +1336,68 @@ class Report:
 
 
 
+
+
+def create_mp4_from_images(image_files: List[str], output_mp4: str, frame_rate: int = 10) -> None:
+    """
+    將 PNG 圖片序列轉換為 MP4 動畫。
+    
+    Parameters:
+        image_files (List[str]): PNG 文件列表，按照時間順序排序。
+        output_mp4 (str): 輸出的 MP4 文件路徑。
+        frame_rate (int): 動畫幀率，默認為 10 fps。
+    """
+    try:
+        print(f"開始生成 MP4 動畫: {output_mp4}")
+        
+        if not image_files:
+            raise ValueError("圖片文件列表為空。請提供有效的圖片文件。")
+        
+        # 確保圖片文件列表是排序的
+        image_files_sorted = sorted(image_files)
+        
+        # 獲取圖片目錄的公共路徑
+        common_path = os.path.commonpath(image_files_sorted)
+        
+        # 構建輸入模式，使用 os.path.join 確保路徑分隔符正確
+        input_pattern = os.path.join(common_path, "frame_h%03d.png")
+        
+        # 確認圖片命名從 000 開始
+        first_image = os.path.basename(image_files_sorted[0])
+        if not first_image.startswith("frame_h") or not first_image.endswith(".png"):
+            raise ValueError("圖片文件名應該以 'frame_h' 開頭並以 '.png' 結尾。")
+        
+        # 構建 ffmpeg 命令，添加 -start_number 0 和 scale 過濾器
+        command = [
+            "ffmpeg", "-y",
+            "-framerate", str(frame_rate),       # 設定幀率
+            "-start_number", "0",                # 指定起始幀編號
+            "-i", input_pattern,                 # 輸入圖片序列模式
+            "-vf", "scale=ceil(iw/2)*2:ceil(ih/2)*2",  # 調整尺寸為偶數
+            "-c:v", "libx264",                   # 使用 H.264 編碼
+            "-pix_fmt", "yuv420p",               # 確保兼容性
+            output_mp4                           # 輸出 MP4 文件
+        ]
+        
+        # 打印命令以便調試
+        print("執行命令:", ' '.join(command))
+        
+        # 調用 ffmpeg 命令，捕捉標準輸出和錯誤輸出
+        result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # 打印 ffmpeg 的標準輸出
+        print(result.stdout.decode('utf-8'))
+        
+        print(f"MP4 動畫已成功生成: {output_mp4}")
+    except subprocess.CalledProcessError as e:
+        # 打印 ffmpeg 的錯誤輸出
+        print(f"生成 MP4 動畫時發生錯誤: {e.stderr.decode('utf-8')}")
+    except Exception as e:
+        print(f"生成 MP4 動畫時發生錯誤: {str(e)}")
+
+
+'''
+
 def create_mp4_from_images(image_files: List[str], output_mp4: str, frame_rate: int = 10) -> None:
     """
     將 PNG 圖片序列轉換為 MP4 動畫。
@@ -1347,13 +1411,14 @@ def create_mp4_from_images(image_files: List[str], output_mp4: str, frame_rate: 
         print(f"開始生成 MP4 動畫: {output_mp4}")
         
         # 使用 ffmpeg 將圖片序列轉換為 MP4
-        # 確保 image_files 的命名遵循某種順序（如 frame_0001.png, frame_0002.png...）
+        # 確保 image_files 的命名遵循某種順序（如 frame_h000.png, frame_h001.png...）
         # 如果文件命名不符合，請提前處理成按順序命名的格式。
         
-        input_pattern = os.path.commonpath(image_files) + "/frame_%04d.png"  # 假設命名為 frame_0001.png
+        input_pattern = os.path.commonpath(image_files) + "\frame_h%03d.png"  # 假設命名為 frame_000.png
         command = [
             "ffmpeg", "-y",
             "-framerate", str(frame_rate),       # 設定幀率
+            "-start_number", "0",                # 指定起始幀編號
             "-i", input_pattern,                # 輸入圖片序列模式
             "-c:v", "libx264",                  # 使用 H.264 編碼
             "-pix_fmt", "yuv420p",              # 確保兼容性
@@ -1367,8 +1432,6 @@ def create_mp4_from_images(image_files: List[str], output_mp4: str, frame_rate: 
     except Exception as e:
         print(f"生成 MP4 動畫時發生錯誤: {str(e)}")
 
-
-'''
 def main():
     try:
         # 設置檔案路徑
@@ -1446,14 +1509,14 @@ if __name__ == "__main__":
 def main():
     try:
         # 設置檔案路徑
-        base_dir = "D:/opendrift/20241114_oil_spill_test_H_ocm_1114"
+        base_dir = "D:/opendrift/20241114_oil_spill_test_T_ocm_1114"
         nc_file = os.path.join(base_dir, "combined_output.nc")
         map_output = os.path.join(base_dir, "oil_spill_map.png")
         report_output = os.path.join(base_dir, "oil_impact_report.txt")
         pdf_output = os.path.join(base_dir, "oil_impact_report.pdf")
         animation_dir = os.path.join(base_dir, "animation")
         gif_output = os.path.join(animation_dir, "oil_spill_animation.gif")
-        mp4_output = os.path.join(animation_dir, "oil_spill_animation.mp4")  # 新增 MP4 動畫路徑
+        mp4_output = os.path.join(animation_dir, "oil_spill_animation.mp4")  
         
         # 確保輸出目錄存在
         os.makedirs(base_dir, exist_ok=True)
